@@ -1,8 +1,8 @@
 # XStream
 
-Xbox Remote Play and Xbox Cloud Gaming in a browser, using a Greenlight-derived frontend and the xbox-xcloud-player engine. Cloudflare Pages serves the interface. A private Cloudflare Worker signs users in, discovers consoles and cloud titles, and handles signaling for both services. The browser plays the WebRTC stream and sends controller input.
+Xbox Remote Play and Xbox Cloud Gaming in a browser, using a Greenlight-derived frontend and the xbox-xcloud-player engine. A Cloudflare Worker serves the interface at https://zemi.gg, signs users in, discovers consoles and cloud titles, and handles signaling for both services. The browser plays the WebRTC stream and sends controller input.
 
-**Verification status.** The app has been exercised locally with workerd, D1, mocked Microsoft/Xbox services and a Chromium WebRTC loopback peer. Live Microsoft grant issuance, console playback and deployment to an actual Cloudflare account require external verification. A new Entra app registration by itself does not establish xHome or console-transfer entitlement. See [authentication requirements](docs/AUTH.md) before provisioning.
+**Verification status.** The app has been exercised locally with workerd, D1, mocked Microsoft/Xbox services and a Chromium WebRTC loopback peer. Live Microsoft grant issuance and console playback require external verification. A new Entra app registration by itself does not establish xHome or console-transfer entitlement. See [authentication requirements](docs/AUTH.md) before provisioning.
 
 ## Run locally
 
@@ -30,33 +30,18 @@ WebRTC needs a reachable candidate path to the Xbox session. The Xbox service de
 
 ## Deploy a custom domain
 
-Run these commands from the repository root using an authorized Cloudflare account. The example uses `xbox.example.com`, a Pages project named `xstream`, and an API Worker named `xstream-api`. Configure the Microsoft public client registration first. [Registration and scopes](docs/AUTH.md)
+Production uses a single Cloudflare Worker for static assets and same-origin API requests at [zemi.gg](https://zemi.gg). The production configuration binds the XStream D1 database and disables Workers.dev and preview URLs. The separate local Worker configuration is used by the development server.
+
+From the repository root, run the following for subsequent releases with an authorized Cloudflare account:
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm exec wrangler login
-pnpm exec wrangler d1 create xstream
-```
-
-Replace the example `database_id` in `apps/worker/wrangler.jsonc` with the returned database UUID. Apply the migrations and publish the private Worker:
-
-```sh
 pnpm db:remote
 pnpm build
 pnpm deploy:worker
-pnpm exec wrangler secret put APP_ORIGIN --config apps/worker/wrangler.jsonc
-pnpm exec wrangler secret put MICROSOFT_CLIENT_ID --config apps/worker/wrangler.jsonc
-pnpm exec wrangler secret put TOKEN_ENCRYPTION_KEY --config apps/worker/wrangler.jsonc
 ```
 
-Enter the exact HTTPS origin without a trailing slash, your public client ID and the base64 key respectively. The API Worker uses a private service binding. Create the Pages project once, then publish the site and its Functions:
-
-```sh
-pnpm exec wrangler pages project create xstream --production-branch main
-pnpm deploy:pages
-```
-
-In Cloudflare, open **Workers & Pages → xstream → Custom domains → Set up a custom domain**, enter the hostname and follow the DNS validation prompt. Verify `/api/health`, then visit the custom domain and test sign-in. The Worker accepts the configured origin. For subsequent releases run the migration, build and both deployment commands. The CI workflow runs checks and browser tests on pushes and pull requests. Publishing is explicit. [Pages custom domains](https://developers.cloudflare.com/pages/configuration/custom-domains/) · [Pages service bindings](https://developers.cloudflare.com/pages/functions/bindings/#service-bindings)
+Production sign-in uses the Worker secrets `MICROSOFT_CLIENT_ID` and `TOKEN_ENCRYPTION_KEY`. Keep the encryption key stable across releases so existing sessions can still be read. [Authentication requirements](docs/AUTH.md)
 
 ## Repository
 
