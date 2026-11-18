@@ -1,0 +1,21 @@
+{
+  "name": "@xstream/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4173"
+  },
+  "dependencies": {
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "xbox-xcloud-player": "1.0.0-beta7"
+  },
+  "devDependencies": {
+    "@types/react": "19",
+    "@types/react-dom": "19",
+    "@vitejs/plugin-react": "5.1.4",
+    "vite": "7.3.8"
+  }
+}

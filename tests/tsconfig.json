@@ -1,0 +1,20 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node",
+      "@cloudflare/workers-types"
+    ]
+  },
+  "include": [
+    "**/*.ts",
+    "../apps/worker/src/**/*.test.ts",
+    "../vitest.config.ts",
+    "../playwright.config.ts"
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "name": "xstream",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm db:local && concurrently -k -n web,api \"pnpm --filter @xstream/web dev\" \"pnpm dev:worker\"",
+    "dev:worker": "wrangler dev --config apps/worker/wrangler.jsonc --ip 127.0.0.1 --port 8787",
+    "db:local": "wrangler d1 migrations apply DB --local --config apps/worker/wrangler.jsonc",
+    "lint": "eslint .",
+    "typecheck": "tsc -p apps/web && tsc -p apps/worker && tsc -p functions && tsc -p tests",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "build": "pnpm --filter @xstream/web build && wrangler deploy --dry-run --config apps/worker/wrangler.jsonc --outdir dist && wrangler pages functions build functions --outfile=.wrangler/pages/index.js",
+    "deploy:worker": "wrangler deploy --config apps/worker/wrangler.jsonc",
+    "deploy:pages": "wrangler pages deploy apps/web/dist --project-name xstream --branch main",
+    "db:remote": "wrangler d1 migrations apply DB --remote --config apps/worker/wrangler.jsonc"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "4.20260702.1",
+    "@eslint/js": "9.39.1",
+    "@playwright/test": "1.61.1",
+    "@types/node": "24",
+    "concurrently": "9.2.1",
+    "esbuild": "0.27.7",
+    "eslint": "9.39.1",
+    "miniflare": "4.20260611.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.73.0",
+    "vitest": "4.1.12",
+    "wrangler": "4.100.0"
+  }
+}
+

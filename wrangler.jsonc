@@ -1,0 +1,11 @@
+{
+  "name": "xstream",
+  "pages_build_output_dir": "apps/web/dist",
+  "compatibility_date": "2026-06-01",
+  "services": [
+    {
+      "binding": "API",
+      "service": "xstream-api"
+    }
+  ]
+}

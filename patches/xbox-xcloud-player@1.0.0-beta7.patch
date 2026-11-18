@@ -1,0 +1,469 @@
+diff --git a/dist/channel/chat.js b/dist/channel/chat.js
+index 1ef91b7da0b089d8985fbbc650f037d90a640a2a..186d17de23ce901a095137477d1963abdb3e0c4e 100644
+--- a/dist/channel/chat.js
++++ b/dist/channel/chat.js
+@@ -8,12 +8,9 @@ class ChatChannel extends channel_1.default {
+     constructor(player) {
+         super(player);
+         this._micPermissions = 'prompt';
+-        navigator.permissions.query({ name: 'microphone' }).then((permissionStatus) => {
++        navigator.permissions?.query({ name: 'microphone' }).then((permissionStatus) => {
+             this._micPermissions = permissionStatus.state;
+-            permissionStatus.onchange = () => {
+-                this._micPermissions = permissionStatus.state;
+-            };
+-        });
++        }).catch(() => {});
+     }
+     getChannelName() {
+         return 'chat';
+diff --git a/dist/channel/input/queue.js b/dist/channel/input/queue.js
+index d6b1eb3effe1b2961216d2dfb5337f346873f345..b438e248213c7d9e79bdbd6d9a15ee026500ca9b 100644
+--- a/dist/channel/input/queue.js
++++ b/dist/channel/input/queue.js
+@@ -4,6 +4,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
+ };
+ Object.defineProperty(exports, "__esModule", { value: true });
+ const packet_1 = __importDefault(require("./packet"));
++// Each per-type count is one byte. Keep bursts in small ordered reports.
++const maxFramesPerReport = 16;
+ class InputQueue {
+     constructor(player) {
+         this._inputSequenceNum = 0;
+@@ -23,8 +25,9 @@ class InputQueue {
+         this.checkQueueAndSend();
+     }
+     queueGamepadFrames(frames, forceSend = false) {
+-        for (const frame in frames) {
+-            this._gamepadQueue.push(frames[frame]);
++        for (const frame of frames) {
++            this._gamepadQueue.push(frame);
++            if (this._gamepadQueue.length === maxFramesPerReport) this.sendQueue();
+         }
+         this.checkQueueAndSend(forceSend);
+     }
+@@ -37,35 +40,20 @@ class InputQueue {
+         this.checkQueueAndSend();
+     }
+     queuePointerFrame(data) {
+-        if (this._pointerQueue.length > 0) {
+-            this._pointerQueue[0].events = this._pointerQueue[0].events.concat(data.events);
+-        }
+-        else {
+-            this._pointerQueue.push(data);
++        for (const event of data.events) {
++            if (!this._pointerQueue.length) this._pointerQueue.push({ events: [] });
++            const events = this._pointerQueue[0].events;
++            events.push(event);
++            if (events.length === maxFramesPerReport) this.sendQueue();
+         }
+         this.checkQueueAndSend();
+     }
+     checkQueueAndSend(forceSend = false) {
+-        if (forceSend === true) {
++        const largestInputBatch = Math.max(this._gamepadQueue.length, this._pointerQueue[0]?.events.length ?? 0,
++            this._mouseQueue.length, this._keyboardQueue.length);
++        if (this._metadataQueue.length > 5 || largestInputBatch >= maxFramesPerReport ||
++            (largestInputBatch > 0 && (forceSend || this._metadataQueue.length > 0))) {
+             this.sendQueue();
+-            return;
+-        }
+-        if (this._metadataQueue.length > 5) {
+-            this.sendQueue();
+-        }
+-        else if (this._metadataQueue.length > 0) {
+-            if (this._gamepadQueue.length > 0) {
+-                this.sendQueue();
+-            }
+-            else if (this._mouseQueue.length > 0) {
+-                this.sendQueue();
+-            }
+-            else if (this._keyboardQueue.length > 0) {
+-                this.sendQueue();
+-            }
+-            else if (this._pointerQueue.length > 0) {
+-                this.sendQueue();
+-            }
+         }
+     }
+     sendQueue() {
+diff --git a/dist/channel/input.js b/dist/channel/input.js
+index 3a339a8e7160dfa8e7b2ffa76865a54936971ad6..9ea4a78246dbba52ead6a144d02a6c4bcc258fa2 100644
+--- a/dist/channel/input.js
++++ b/dist/channel/input.js
+@@ -66,13 +66,12 @@ class InputChannel extends channel_1.default {
+         const Packet = new packet_1.default(0);
+         Packet.setMetadata(navigator.maxTouchPoints > 1 ? navigator.maxTouchPoints : 1);
+         this.send(Packet.toBuffer());
+-        console.log('[InputChannel] Sent metadata:', Packet, Packet.toBuffer());
+-        setTimeout(this.gamepadStateLoop.bind(this), 16);
++        clearTimeout(this._gamepadTimer);
++        this._gamepadTimer = setTimeout(this.gamepadStateLoop.bind(this), 16);
+     }
+     onMessage(event) {
+         const dataView = new DataView(event.data);
+         const reportType = dataView.getUint8(0);
+-        console.log('[InputChannel] received:', dataView);
+         if (reportType === packet_1.ReportTypes.Vibration) {
+             console.log('Received a vibration report');
+             dataView.getUint8(2); // rumbleType: 0 = FourMotorRumble
+@@ -120,10 +119,10 @@ class InputChannel extends channel_1.default {
+                 }
+             }
+         }
+-        if (gamepadFrames.length > 0) {
+-            this.queueGamepadFrames(gamepadFrames);
+-        }
+-        setTimeout(this.gamepadStateLoop.bind(this), 16);
++        // Flush pending input every poll, even when there is no controller or new video frame.
++        this.queueGamepadFrames(gamepadFrames, true);
++        clearTimeout(this._gamepadTimer);
++        this._gamepadTimer = setTimeout(this.gamepadStateLoop.bind(this), 16);
+     }
+     queueMetadataFrame(data) {
+         return this._inputQueue.queueMetadataFrame(data);
+@@ -141,7 +140,7 @@ class InputChannel extends channel_1.default {
+         this._inputQueue.queuePointerFrame(data);
+     }
+     destroy() {
+-        // console.log('DebugChannel destroy() called')
++        clearTimeout(this._gamepadTimer);
+     }
+ }
+ exports.default = InputChannel;
+diff --git a/dist/channel/message/handler.js b/dist/channel/message/handler.js
+index a4786b095b4dd2a9683433f610f4eb6f57eb95b8..ce634d699f10e49a81c1d22f6d6036034beebde2 100644
+--- a/dist/channel/message/handler.js
++++ b/dist/channel/message/handler.js
+@@ -7,14 +7,12 @@ class MessageHandler {
+         this.handle(this._data);
+     }
+     handle(data) {
+-        console.log('[MessageHandler] Handling:', data);
+         switch (data.target) {
+             case '/streaming/sessionLifetimeManagement/serverInitiatedDisconnect':
+                 this.completeTransaction(data.id, '');
+                 this._channel.getPlayer().destroy();
+                 break;
+             case '/streaming/properties/titleinfo':
+-                console.log('Title update:', data);
+                 break;
+             case '/streaming/touchcontrols/showlayoutv2':
+                 // console.log('Showing touch layout:', data)
+@@ -23,7 +21,6 @@ class MessageHandler {
+                 this.handleMessage(data);
+                 break;
+             default:
+-                console.log('[MessageChannel] Unhandled transaction:', data);
+         }
+     }
+     completeTransaction(id, data) {
+@@ -47,7 +44,6 @@ class MessageHandler {
+     }
+     handleMessage(data) {
+         const jsonData = JSON.parse(data.content);
+-        console.log(jsonData);
+         if (confirm(jsonData.TitleText + '\n\n' + jsonData.ContentText)) {
+             this.completeTransaction(data.id, { Result: 0 });
+         }
+diff --git a/dist/channel/message.d.ts b/dist/channel/message.d.ts
+index f640283fd1cda6df853239ee0e4850afdd834724..918b721f459343fd96bd2164c2ff03a53a91ceef 100644
+--- a/dist/channel/message.d.ts
++++ b/dist/channel/message.d.ts
+@@ -1,5 +1,6 @@
+ import Channel from '../lib/channel';
+ export default class MessageChannel extends Channel {
++    onSystemKeyboardMessage?: (message: { type: string; target?: string; id: string; content?: string }) => boolean;
+     _handshakeCompleted: boolean;
+     getChannelName(): string;
+     getChannelConfig(): {
+diff --git a/dist/channel/message.js b/dist/channel/message.js
+index fabdfea0d9847cc0f064ed413a0d05b8c53617bc..e1420ab46f7fd3a676c20d485da7578b531a1c3e 100644
+--- a/dist/channel/message.js
++++ b/dist/channel/message.js
+@@ -33,6 +33,7 @@ class MessageChannel extends channel_1.default {
+     onMessage(event) {
+         const data = JSON.parse(event.data);
+         // console.log('[MessageChannel] received:', data)
++        if (this.onSystemKeyboardMessage && this.onSystemKeyboardMessage(data)) return;
+         switch (data.type) {
+             case 'HandshakeAck':
+                 console.log('[MessageChannel] Handshake completed');
+@@ -47,11 +48,11 @@ class MessageChannel extends channel_1.default {
+                 new handler_1.default(this, data);
+                 break;
+             default:
+-                console.log('[MessageChannel] Unhandled message type:', data.type, data);
++                break;
+         }
+     }
+     sendConfig() {
+-        const systemUis = [];
++        const systemUis = this.onSystemKeyboardMessage ? [10] : [];
+         const systemVersion = [0, 2, 0];
+         const uiConfig = JSON.stringify(this.generateMessage('/streaming/systemUi/configuration', {
+             'version': systemVersion,
+diff --git a/dist/input/gamepad.js b/dist/input/gamepad.js
+index 027b1702856422be1adaa19a36316343079240e3..ca72f6aa48df8bc31e596fed143dd708248ae3f4 100644
+--- a/dist/input/gamepad.js
++++ b/dist/input/gamepad.js
+@@ -236,11 +236,11 @@ class Gamepad {
+         // Set buttons
+         if (gamepad !== undefined) {
+             for (const button in this._options.gamepad_mapping) {
+-                frame[button] = gamepad.buttons[this._options.gamepad_mapping[button]].value;
++                frame[button] = (gamepad.buttons[this._options.gamepad_mapping[button]]?.value ?? 0);
+             }
+             // Set axis
+             for (const axis in this._options.gamepad_axes_mapping) {
+-                frame[axis] = this.normaliseAxis(gamepad.axes[this._options.gamepad_axes_mapping[axis]]);
++                frame[axis] = this.normaliseAxis(gamepad.axes[this._options.gamepad_axes_mapping[axis]] ?? 0);
+             }
+         }
+         // Check for button overrides from the keyboard
+diff --git a/dist/lib/channel.js b/dist/lib/channel.js
+index 938b9742e848e589c95375a0b87ebb0d92fd6877..e178d12b1457aec916e3dc42c57e83a8ccbd9fb7 100644
+--- a/dist/lib/channel.js
++++ b/dist/lib/channel.js
+@@ -20,19 +20,19 @@ class Channel {
+     }
+     // Default channel functions
+     onOpen(event) {
+-        console.log(this.getChannelName(), 'Opening channel:', event);
++        console.log(this.getChannelName(), 'Opening channel:');
+     }
+     onMessage(event) {
+-        console.log(this.getChannelName(), 'Message channel:', event);
++        // Unsupported channel messages are ignored.
+     }
+     onClosing(event) {
+-        console.log(this.getChannelName(), 'Closing channel:', event);
++        console.log(this.getChannelName(), 'Closing channel:');
+     }
+     onClose(event) {
+-        console.log(this.getChannelName(), 'Closed channel:', event);
++        console.log(this.getChannelName(), 'Closed channel:');
+     }
+     onError(event) {
+-        console.log(this.getChannelName(), 'Error channel:', event);
++        console.log(this.getChannelName(), 'Error channel:');
+     }
+     send(data) {
+         if (this._dataChannel.readyState !== 'open') {
+diff --git a/dist/lib/ice.d.ts b/dist/lib/ice.d.ts
+index 398574da9a890ed55e644391a1a3dd7bdca1896d..f45b54d1473fef611df8f8f7dc9a955b94b40c13 100644
+--- a/dist/lib/ice.d.ts
++++ b/dist/lib/ice.d.ts
+@@ -4,6 +4,6 @@ export default class Ice {
+     private _iceCandidates;
+     constructor(player: xCloudPlayer);
+     getCandidates(): RTCIceCandidate[];
+-    setRemoteCandidates(candidates: RTCIceCandidate[]): void;
++    setRemoteCandidates(candidates: RTCIceCandidateInit[]): Promise<void>;
+ }
+ //# sourceMappingURL=ice.d.ts.map
+\ No newline at end of file
+diff --git a/dist/lib/ice.js b/dist/lib/ice.js
+index c1d651a64c17aed9199de8a6c944817d5e3a0893..6d1cb0e842911df2d3aae2b8c2e0810a03d59d67 100644
+--- a/dist/lib/ice.js
++++ b/dist/lib/ice.js
+@@ -18,7 +18,7 @@ class Ice {
+     getCandidates() {
+         return this._iceCandidates;
+     }
+-    setRemoteCandidates(candidates) {
++    async setRemoteCandidates(candidates) {
+         if (candidates.length === 0) {
+             console.warn('Error: No candidates received!');
+         }
+@@ -27,20 +27,20 @@ class Ice {
+                 continue;
+             }
+             const candidateAddress = candidates[candidate].candidate.split(' ');
+-            if (candidateAddress.length > 4 && candidateAddress[4].substr(0, 4) === '2001') {
++            if (candidateAddress.length > 4 && /^2001:0{1,4}:[0-9a-f]{1,4}:[0-9a-f]{1,4}:[0-9a-f]{1,4}:[0-9a-f]{1,4}:[0-9a-f]{4}:[0-9a-f]{4}$/i.test(candidateAddress[4])) {
+                 const teredo = new teredo_1.default(candidateAddress[4]);
+-                this._peerConnection.addIceCandidate({
++                await this._peerConnection.addIceCandidate({
+                     candidate: 'a=candidate:10 1 UDP 1 ' + teredo.getIpv4Address() + ' 9002 typ host ',
+                     sdpMLineIndex: candidates[candidate].sdpMLineIndex,
+                     sdpMid: candidates[candidate].sdpMid,
+                 });
+-                this._peerConnection.addIceCandidate({
++                await this._peerConnection.addIceCandidate({
+                     candidate: 'a=candidate:11 1 UDP 1 ' + teredo.getIpv4Address() + ' ' + teredo.getIpv4Port() + ' typ host ',
+                     sdpMLineIndex: candidates[candidate].sdpMLineIndex,
+                     sdpMid: candidates[candidate].sdpMid,
+                 });
+             }
+-            this._peerConnection.addIceCandidate({
++            await this._peerConnection.addIceCandidate({
+                 candidate: candidates[candidate].candidate,
+                 sdpMid: candidates[candidate].sdpMid,
+                 sdpMLineIndex: candidates[candidate].sdpMLineIndex,
+diff --git a/dist/lib/sdp.js b/dist/lib/sdp.js
+index 31e4535d4a4066729d3da8d4c023a043eb95c37c..4726b027309a7d65ddaae7c67d3fd60b40f3601d 100644
+--- a/dist/lib/sdp.js
++++ b/dist/lib/sdp.js
+@@ -26,7 +26,6 @@ class Sdp {
+     // }
+     setLocalSDP(sdp) {
+         var _a;
+-        console.log('[SDP] setLocalSDP() Setting local SDP:', sdp);
+         if (this._player._config.video_bitrate > 0) {
+             console.log('[SDP] Set max video bitrate to:', this._player._config.video_bitrate, 'kbps');
+             sdp.sdp = this._setBitrate(sdp.sdp, 'video', this._player._config.video_bitrate);
+@@ -42,7 +41,6 @@ class Sdp {
+         return sdp;
+     }
+     setRemoteSDP(sdp) {
+-        console.log('[SDP] setRemoteSDP() Setting remote SDP:', sdp);
+         return sdp;
+     }
+     getDefaultCodecPreferences() {
+diff --git a/dist/lib/stats.js b/dist/lib/stats.js
+index 73f919811a02bd55d780c2423d39a8861f415b51..f44d78a92148fee310ac66163df569ff010ed06a 100644
+--- a/dist/lib/stats.js
++++ b/dist/lib/stats.js
+@@ -15,7 +15,10 @@ class Stats {
+         this._activeRemoteCandidate = '';
+         this._player = player;
+         this._peerConnection = player._peerConnection;
+-        setInterval(this.loop.bind(this), 1000);
++        this._timer = setInterval(this.loop.bind(this), 1000);
++    }
++    destroy() {
++        clearInterval(this._timer);
+     }
+     loop() {
+         this._peerConnection.getStats().then((stats) => {
+diff --git a/dist/player.d.ts b/dist/player.d.ts
+index dbc4afe2c18c52504da4712703aa700900bf17c4..ebf19b6ade3e33c8db4974c5ea9036f4e20718d7 100644
+--- a/dist/player.d.ts
++++ b/dist/player.d.ts
+@@ -31,9 +31,9 @@ export default class xCloudPlayer {
+     onConnectionStateChange(callback: (state: string) => void): void;
+     setChatSdpHandler(callback: (offer: RTCSessionDescriptionInit) => void): void;
+     createOffer(): Promise<RTCSessionDescriptionInit>;
+-    setRemoteOffer(sdpRemote: string): void;
++    setRemoteOffer(sdpRemote: string): Promise<void>;
+     getIceCandidates(): RTCIceCandidate[];
+-    setRemoteIceCandidates(candidates: Array<any>): void;
++    setRemoteIceCandidates(candidates: RTCIceCandidateInit[]): Promise<void>;
+     getVideoElement(): HTMLVideoElement | undefined;
+     getAudioElement(): HTMLAudioElement | undefined;
+     toggleDebugOverlay(): void;
+diff --git a/dist/player.js b/dist/player.js
+index 8c76f1d1f83c26a9152e94182341332ed3882c3f..7ce6b512ed0db70bfd6fcf0e6aa7fec25f8d07ea 100644
+--- a/dist/player.js
++++ b/dist/player.js
+@@ -31,7 +31,7 @@ class xCloudPlayer {
+         this._isDestoyed = false;
+         this._sdpHelper = new sdp_1.default(this);
+         this._iceHelper = new ice_1.default(this);
+-        this._statsHelper = new stats_1.default(this);
++        this._statsHelper = undefined;
+         this._sdpHandler = () => { };
+         this._elementId = elementId;
+         this._config = {
+@@ -64,38 +64,27 @@ class xCloudPlayer {
+     setChatSdpHandler(callback) {
+         this._sdpHandler = callback;
+     }
+-    createOffer() {
+-        return new Promise((resolve, reject) => {
+-            this._peerConnection.createOffer({
+-                offerToReceiveAudio: true,
+-                offerToReceiveVideo: true,
+-            }).then((offer) => {
+-                const playerOffer = this._sdpHelper.setLocalSDP(offer);
+-                this._peerConnection.setLocalDescription(playerOffer);
+-                resolve(playerOffer);
+-            }).catch((error) => {
+-                reject(error);
+-            });
++    async createOffer() {
++        const offer = await this._peerConnection.createOffer({
++            offerToReceiveAudio: true,
++            offerToReceiveVideo: true,
+         });
++        const local = this._sdpHelper.setLocalSDP(offer);
++        await this._peerConnection.setLocalDescription(local);
++        return local;
+     }
+     setRemoteOffer(sdpRemote) {
+-        const finalSdp = this._sdpHelper.setRemoteSDP(sdpRemote);
+-        try {
+-            this._peerConnection.setRemoteDescription({
+-                type: 'answer',
+-                sdp: finalSdp,
+-            });
+-        }
+-        catch (e) {
+-            console.log('[xPlayer] setRemoteOffer() Remote SDP is not valid:', sdpRemote, e);
+-        }
++        return this._peerConnection.setRemoteDescription({
++            type: 'answer',
++            sdp: this._sdpHelper.setRemoteSDP(sdpRemote),
++        });
+     }
+     getIceCandidates() {
+         return this._iceHelper.getCandidates();
+     }
+     setRemoteIceCandidates(candidates) {
+         // @TODO: Sort ipv4 and ipv6, and use best route as preference (ipv6 only etc)
+-        this._iceHelper.setRemoteCandidates(candidates);
++        return this._iceHelper.setRemoteCandidates(candidates);
+     }
+     getVideoElement() {
+         if (this._videoComponent) {
+@@ -119,10 +108,11 @@ class xCloudPlayer {
+         }
+     }
+     getStats() {
+-        return this._statsHelper;
++        return this._statsHelper ??= new stats_1.default(this);
+     }
+     destroy() {
+         if (this._isDestoyed === false) {
++            this._statsHelper?.destroy();
+             this._peerConnection.close();
+             if (this._peerConnection.onconnectionstatechange) {
+                 this._peerConnection.onconnectionstatechange(new Event('connectionstatechanged'));
+diff --git a/dist/render/video.js b/dist/render/video.js
+index aaeec9a7b6e424e8cb387dfda392bd557c79105c..1d930665b7fd03e00001d0880b907ba7a2ebde16 100644
+--- a/dist/render/video.js
++++ b/dist/render/video.js
+@@ -30,13 +30,13 @@ class VideoComponent {
+         if (isStatic === true) {
+             element.style.position = 'relative';
+         }
+-        this._element.requestVideoFrameCallback(this.processVideoMetadata.bind(this));
++        this._frameCallback = this._element.requestVideoFrameCallback(this.processVideoMetadata.bind(this));
+     }
+     processVideoMetadata(timestamp, data) {
+         if (this._element === undefined) {
+             return;
+         }
+-        this._element.requestVideoFrameCallback(this.processVideoMetadata.bind(this));
++        this._frameCallback = this._element.requestVideoFrameCallback(this.processVideoMetadata.bind(this));
+         this._player._channels.input.queueMetadataFrame({
+             serverDataKey: data.rtpTimestamp,
+             firstFramePacketArrivalTimeMs: data.receiveTime,
+@@ -52,12 +52,14 @@ class VideoComponent {
+         this._overlay.toggleDebug();
+     }
+     destroy() {
+-        const streamHolder = document.getElementById(this._player.getElementId());
+-        const element = streamHolder === null || streamHolder === void 0 ? void 0 : streamHolder.querySelector('video');
++        const element = this._element;
++        this._element = undefined;
+         if (this._overlay !== undefined) {
+             this._overlay.destroy();
+         }
+         if (element) {
++            element.cancelVideoFrameCallback(this._frameCallback);
++            element.srcObject = null;
+             element.remove();
+         }
+     }

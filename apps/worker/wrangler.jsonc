@@ -1,0 +1,17 @@
+{
+  "name": "xstream-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "ratelimits": [{ "name": "PAIRING_STARTS", "namespace_id": "1001", "simple": { "limit": 12, "period": 60 } }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "xstream",
+      // Replace with the ID returned by wrangler d1 create xstream.
+      "database_id": "00000000-0000-4000-8000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
