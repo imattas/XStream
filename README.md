@@ -2,7 +2,9 @@
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/imattas/XStream)
 
-The button starts Cloudflare’s new-project flow, which copies this repository; it does not update the existing zemi.gg Worker or preserve its production-only PIN gate. The repository currently includes a legacy Pages configuration, so this new-project flow has not been verified. For the existing Worker, use the deployment steps below.
+The button creates a new Worker and D1 database using a copy of this repository. It uses the built-in Xbox public client ID, so no client ID is needed. In the setup form, set `APP_ORIGIN` to the exact HTTPS origin where you will access the new Worker and set `TOKEN_ENCRYPTION_KEY` to a new base64-encoded 32-byte random key (generate one with the command below). The deploy command applies D1 migrations automatically. If you do not yet know the Workers.dev URL, update `vars.APP_ORIGIN` in the copied repository’s `wrangler.jsonc` to that exact URL and redeploy before signing in.
+
+This creates a separate application and does not update `zemi.gg`, move its domain, or copy its secrets or data. The production-only PIN gate is not included in the new project; protect the new deployment before sharing its URL. TURN relay secrets are optional and must be configured separately. The button flow has not been tested against a live Cloudflare account.
 
 Xbox Remote Play and Xbox Cloud Gaming in a browser, using a Greenlight-derived frontend and the xbox-xcloud-player engine. A Cloudflare Worker serves the interface at https://zemi.gg, signs users in, discovers consoles and cloud titles, and handles signaling for both services. The browser plays the WebRTC stream and sends controller input.
 
@@ -14,11 +16,11 @@ Use Node.js 24 and pnpm 11.25.0. From the repository root:
 
 ```powershell
 pnpm install --frozen-lockfile
-Copy-Item .env.example apps/worker/.dev.vars
+Copy-Item apps/worker/.dev.vars.example apps/worker/.dev.vars
 pnpm dev
 ```
 
-On macOS/Linux use `cp .env.example apps/worker/.dev.vars`. Open [XStream locally](http://127.0.0.1:5173). The development command applies the D1 migrations, starts Vite on port 5173 and starts Wrangler on port 8787. The public browser origin is the first address. You can open the sign-in screen with empty credentials. For Microsoft pairing, set the Worker encryption key. XStream defaults to the public Xbox client ID used by the upstream player; set `MICROSOFT_CLIENT_ID` to override it. Players request a code in XStream and approve it at the Microsoft link shown. Use the HTTPS custom domain for production.
+On macOS/Linux use `cp apps/worker/.dev.vars.example apps/worker/.dev.vars`. Open [XStream locally](http://127.0.0.1:5173). The development command applies the D1 migrations, starts Vite on port 5173 and starts Wrangler on port 8787. The public browser origin is the first address. You can open the sign-in screen with empty credentials. For Microsoft pairing, set the Worker encryption key. XStream defaults to the public Xbox client ID used by the upstream player; set `MICROSOFT_CLIENT_ID` to override it. Players request a code in XStream and approve it at the Microsoft link shown. Use the HTTPS custom domain for production.
 
 Generate a fresh encryption key in a private terminal and place it only in the Worker's secrets:
 
