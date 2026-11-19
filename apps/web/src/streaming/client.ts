@@ -6,7 +6,7 @@ import { readGamepads } from '../controllers/useControllers';
 import type { InputMode } from '../../../../input-modes';
 import type { StreamMode } from '../../../../stream-mode';
 
-export interface StreamOptions { onKeyboard?: (prompt?: KeyboardPrompt) => void; onInputsReady?: (inputs: InputMode[], player: Player) => void; bitrateKbps?: number; deadzone?: number; swapAB?: boolean }
+export interface StreamOptions { onKeyboard?: (prompt?: KeyboardPrompt) => void; onInputsReady?: (inputs: InputMode[], player: Player) => void; bitrateKbps?: number; deadzone?: number; swapAB?: boolean; relay?: boolean }
 export interface StreamStats { rttMs?: number; width?: number; height?: number; fps?: number; videoMbps?: number }
 export interface ConsoleInfo {
   serverId: string; deviceName: string; powerState: string; consoleType: string;
@@ -103,6 +103,7 @@ export class RemotePlayClient {
     this.active = attempt;
     const signal = attempt.abort.signal;
     this.update('provisioning');
+    let stage = 'XS-BROWSER';
     try {
       if (typeof RTCPeerConnection === 'undefined' || typeof HTMLVideoElement.prototype.requestVideoFrameCallback !== 'function' ||
           typeof RTCRtpTransceiver === 'undefined' || typeof RTCRtpTransceiver.prototype.setCodecPreferences !== 'function') {
@@ -110,6 +111,9 @@ export class RemotePlayClient {
       }
       for (const path of pendingReleases.keys()) await release(path);
       signal.throwIfAborted();
+      stage = 'XS-RELAY';
+      const relay = this.options.relay ? await request<{iceServers: RTCIceServer[]}>('/api/turn', 'POST', signal) : undefined;
+      stage = 'XS-SESSION';
       // Let creation finish after cancellation so a late-created server session can still be released.
       attempt.creation = request<{sessionId: string; inputs?: InputMode[]}>(attempt.base, 'POST', undefined, {
         ...(mode === 'xcloud' ? { titleId: target } : { serverId: target }), locale: navigator.language, timezoneOffsetMinutes: new Date().getTimezoneOffset()
@@ -119,9 +123,10 @@ export class RemotePlayClient {
       attempt.path = attempt.base + '/' + encodeURIComponent(sessionId);
       const resetTimeout = () => {
         clearTimeout(attempt.connectTimeout);
-        attempt.connectTimeout = setTimeout(() => this.fail(attempt, 'Timed out waiting for Xbox or WebRTC. Check your network and try again.'), 90000);
+        attempt.connectTimeout = setTimeout(() => this.fail(attempt, 'Timed out waiting for Xbox or WebRTC. Check your network and try again.', 'XS-TIMEOUT'), 90000);
       };
       resetTimeout();
+      stage = 'XS-PROVISION';
       let transferred = false;
       let queuedAt: number | undefined;
       let estimate: number | null = null;
@@ -160,8 +165,10 @@ export class RemotePlayClient {
       }
       signal.throwIfAborted();
       this.update('negotiating');
+      stage = 'XS-SIGNAL';
       const player = new Player(this.holderId, { video_bitrate: this.options.bitrateKbps ?? 0 });
       attempt.player = player;
+      if (relay) player._peerConnection.setConfiguration({ iceServers: relay.iceServers, iceTransportPolicy: 'relay' });
       if (this.options.onKeyboard) enableSystemKeyboard(player, this.options.onKeyboard);
       const input = player._channels.input;
       const startInput = input.start.bind(input);
@@ -186,9 +193,9 @@ export class RemotePlayClient {
         } else if (state === 'disconnected') {
           this.update('disconnected', 'Waiting for the network to recover…');
           clearTimeout(attempt.lossTimeout);
-          attempt.lossTimeout = setTimeout(() => this.fail(attempt, 'The peer connection was interrupted.'), 10000);
+          attempt.lossTimeout = setTimeout(() => this.fail(attempt, 'The peer connection was interrupted.', 'XS-CONNECTION'), 10000);
         } else if (state === 'failed' || state === 'closed') {
-          this.fail(attempt, 'The Xbox peer connection ended.');
+          this.fail(attempt, 'The Xbox peer connection ended.', 'XS-CONNECTION');
         }
       });
       const offer = await player.createOffer();
@@ -196,7 +203,8 @@ export class RemotePlayClient {
       const answer = await this.exchange<{sdp: string}>(attempt.path + '/sdp', signal);
       await player.setRemoteOffer(answer.sdp);
       // The service exchanges a complete batch of ICE candidates rather than trickle ICE.
-      const deadline = Date.now() + 5000;
+      stage = 'XS-ICE';
+      const deadline = Date.now() + (relay ? 15000 : 5000);
       while (player._peerConnection.iceGatheringState !== 'complete' && Date.now() < deadline) await sleep(100, signal);
       const candidates = player.getIceCandidates().map(c => c.toJSON());
       if (!candidates.length) throw new Error('The browser gathered no ICE candidates.');
@@ -207,7 +215,7 @@ export class RemotePlayClient {
       this.keepalive(attempt);
     } catch (err) {
       if (!signal.aborted) {
-        this.fail(attempt, err instanceof Error ? err.message : 'Could not connect to Xbox.');
+        this.fail(attempt, err instanceof Error ? err.message : 'Could not connect to Xbox.', stage);
         throw err;
       }
     }
@@ -226,13 +234,13 @@ export class RemotePlayClient {
         await request(attempt.path + '/keepalive', 'POST', attempt.abort.signal);
         if (this.active === attempt) this.keepalive(attempt);
       } catch (err) {
-        this.fail(attempt, err instanceof Error ? err.message : 'Xbox keepalive failed.');
+        this.fail(attempt, err instanceof Error ? err.message : 'Xbox keepalive failed.', 'XS-KEEPALIVE');
       }
     }, 30000);
   }
-  private fail(attempt: Attempt, detail: string) {
+  private fail(attempt: Attempt, detail: string, code: string) {
     if (this.active !== attempt) return;
-    this.update('failed', detail);
+    this.update('failed', '[' + code + '] ' + detail);
     void this.close(attempt).catch(() => undefined);
   }
   private close(attempt: Attempt) {

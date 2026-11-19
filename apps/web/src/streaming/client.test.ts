@@ -23,6 +23,7 @@ class Peer extends EventTarget {
     const c = { candidate: 'candidate:1 1 UDP 1 192.0.2.1 9002 typ host', sdpMid: '0', sdpMLineIndex: 0 };
     this.dispatchEvent(Object.assign(new Event('icecandidate'), { candidate: { ...c, toJSON: () => c } }));
   }
+  setConfiguration = vi.fn();
   setRemoteDescription = vi.fn(() => Promise.resolve());
   async addIceCandidate() { this.connectionState = 'connected'; this.onconnectionstatechange?.(); }
   getStats() { return Promise.resolve(new Map([['pair', { type: 'candidate-pair', state: 'succeeded', nominated: true, currentRoundTripTime: 0.023 }]])); }
@@ -117,6 +118,29 @@ describe('xHome browser negotiation using the published player', () => {
     expect(Peer.latest.close).toHaveBeenCalledOnce();
     expect(states.at(-1)).toBe('idle');
     expect(log.at(-1)).toBe('DELETE /api/stream/session/stream');
+  });
+  it('uses only the TLS relay when relay mode is requested', async () => {
+    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+      if (url === '/api/turn') return Response.json({ iceServers: [{ urls: 'turns:turn.cloudflare.com:443?transport=tcp', username: 'user', credential: 'temporary' }] });
+      if (url === '/api/stream/session') return Response.json({ sessionId: 'relay' });
+      if (url.endsWith('/state')) return Response.json({ state: 'Provisioned' });
+      if (url.endsWith('/sdp') && init.method === 'GET') return Response.json({ sdp: 'answer' });
+      if (url.endsWith('/ice') && init.method === 'GET') return Response.json({ candidates: [{ candidate: 'candidate:2 1 UDP 1 192.0.2.2 9002 typ host' }] });
+      return Response.json({});
+    });
+    const client = new RemotePlayClient('media', () => {}, { relay: true });
+    await client.connect('console');
+    expect(Peer.latest.setConfiguration).toHaveBeenCalledWith({ iceTransportPolicy: 'relay', iceServers: [{ urls: 'turns:turn.cloudflare.com:443?transport=tcp', username: 'user', credential: 'temporary' }] });
+    await client.disconnect();
+  });
+  it('reports a relay setup code without creating an Xbox session', async () => {
+    const states: Array<{state: StreamState; detail?: string}> = [];
+    const fetcher = vi.fn(async () => Response.json({ error: 'The TURN relay is not configured.' }, { status: 503 }));
+    vi.stubGlobal('fetch', fetcher);
+    const client = new RemotePlayClient('media', (state, detail) => states.push({ state, detail }), { relay: true });
+    await expect(client.connect('console')).rejects.toThrow();
+    expect(states.at(-1)).toEqual({ state: 'failed', detail: '[XS-RELAY] The TURN relay is not configured.' });
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
   it('tears down the session when the provisioning service fails', async () => {
     const fetcher = vi.fn(async (url: string) => Response.json(url.endsWith('/state') ? { state: 'Failed' } : { sessionId: 'bad' }));

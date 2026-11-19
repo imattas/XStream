@@ -15,6 +15,7 @@ export interface Preferences {
   overlayInset: number
   overlayLift: [number, number, number]
   fit: Fit
+  relay: boolean
   bitrateKbps: number
   deadzone: number
   swapAB: boolean
@@ -25,7 +26,7 @@ const legacyKey = 'greenlight.preferences.v1'
 const defaults: Preferences = {
   catalogSort: 'recommended', accent: 'green', startStats: false, preferredInput: 'auto',
   overlayScale: 100, overlayOpacity: 100, overlayMirrored: false, background: 'classic', startPage: 'home', overlayInset: 2, overlayLift: [2, 2, 2],
-  fit: 'contain', bitrateKbps: 0, deadzone: 0.1, swapAB: false, autoReconnect: true,
+  fit: 'contain', relay: false, bitrateKbps: 0, deadzone: 0.1, swapAB: false, autoReconnect: true,
 }
 
 function within(value: unknown, min: number, max: number, fallback: number) {
@@ -48,6 +49,7 @@ function read(): Preferences {
       overlayInset: within(data.overlayInset, 0, 8, 2),
       overlayLift: [0, 1, 2].map(i => within(data.overlayLift?.[i], 0, 30, 2)) as Preferences['overlayLift'],
       fit: data.fit === 'cover' || data.fit === 'fill' ? data.fit : 'contain',
+      relay: data.relay === true,
       bitrateKbps: within(data.bitrateKbps, 0, 50000, defaults.bitrateKbps),
       deadzone: within(data.deadzone, 0, 0.4, defaults.deadzone),
       swapAB: data.swapAB === true,
