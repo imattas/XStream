@@ -9,7 +9,7 @@ XStream connects a browser to the signed-in user's Xbox Series X or Series S or 
 3. Create an xHome session, authorize the transfer, exchange SDP and ICE, and play through the browser.
 4. Inspect connection and controller status, change supported playback preferences, enter fullscreen, reconnect, or end the session.
 
-Cloud Gaming uses the same sign-in, settings, player and controller. Open Cloud Gaming, search the account catalog, select a title and press Play. Disconnect before switching targets.
+Cloud Gaming uses the same sign-in, settings, player and controller. Open Cloud Gaming, search the account catalog, select a title and press Play. Starting another stream closes the existing stream owned by the same signed-in browser session before launching the new one.
 
 ## Deployment boundary
 

@@ -14,6 +14,11 @@ export interface ConsoleInfo {
 }
 export type StreamState = 'idle'|'provisioning'|'negotiating'|'connected'|'disconnected'|'failed';
 
+export function peerFailureDetail(iceState: RTCIceConnectionState, relay: boolean) {
+  const hint = relay ? 'TLS relay is on; check that TURN over TLS on TCP 443 is reachable.' : 'TLS relay is off; try enabling it in Streaming settings if configured.';
+  return 'The Xbox peer connection ended (ICE: ' + iceState + '). ' + hint;
+}
+
 export function gamepadOptions(options: StreamOptions) {
   return {
     enable_keyboard: false, enable_vibration: false,
@@ -195,7 +200,7 @@ export class RemotePlayClient {
           clearTimeout(attempt.lossTimeout);
           attempt.lossTimeout = setTimeout(() => this.fail(attempt, 'The peer connection was interrupted.', 'XS-CONNECTION'), 10000);
         } else if (state === 'failed' || state === 'closed') {
-          this.fail(attempt, 'The Xbox peer connection ended.', 'XS-CONNECTION');
+          this.fail(attempt, peerFailureDetail(player._peerConnection.iceConnectionState, this.options.relay === true), 'XS-CONNECTION');
         }
       });
       const offer = await player.createOffer();
