@@ -42,12 +42,13 @@ async function post(endpoint: string, body: BodyInit, headers: HeadersInit, stag
 function xboxPost(endpoint: string, body: ObjectValue, stage: string) {
   return post(endpoint, JSON.stringify(body), { 'Content-Type': 'application/json', 'x-xbl-contract-version': '1' }, stage);
 }
+export const upstreamClientId = '1f907974-e22b-4810-a9de-d9647380c97e';
 function oauthPost(env: AuthEnv, fields: Record<string, string>, endpoint: string, stage: string) {
-  const body = new URLSearchParams({ ...fields, client_id: env.MICROSOFT_CLIENT_ID });
+  const body = new URLSearchParams({ ...fields, client_id: env.MICROSOFT_CLIENT_ID || upstreamClientId });
   return post(endpoint, body, { 'Content-Type': 'application/x-www-form-urlencoded' }, stage);
 }
 
-export const deviceScopes = 'xboxlive.signin offline_access';
+export const deviceScopes = 'xboxlive.signin openid profile offline_access';
 export function beginDeviceGrant(env: AuthEnv) {
   return oauthPost(env, { scope: deviceScopes }, authority + '/devicecode', 'device_login');
 }

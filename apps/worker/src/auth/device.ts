@@ -16,7 +16,6 @@ export async function deviceLogin(request: Request, env: AuthEnv, action: string
     return new Response(null, { status: 204, headers: { 'Set-Cookie': setCookie(pairingCookie, '', 0) } });
   }
   if (action === 'start') {
-    if (!env.MICROSOFT_CLIENT_ID) throw new AuthError(503, 'configuration', 'The host needs to configure a Microsoft public client ID for pairing.');
     const clientKey = request.headers.get('CF-Connecting-IP') || 'unknown';
     const admission = await env.PAIRING_STARTS.limit({ key: clientKey });
     if (!admission.success) return Response.json({ error: 'Too many pairing attempts. Try again in a minute.' },

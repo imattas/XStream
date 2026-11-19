@@ -152,3 +152,15 @@ describe('Xbox credentials', () => {
     expect(exchange).toHaveBeenCalledTimes(2);
   });
 });
+
+it('uses the upstream public client ID for pairing when no override is configured', async () => {
+  const exchange = vi.fn().mockResolvedValue(Response.json({
+    user_code: 'TEST', device_code: 'fixture', verification_uri: 'https://microsoft.com/link', expires_in: 900, interval: 5
+  }));
+  vi.stubGlobal('fetch', exchange);
+  const result = await handleAuth(new Request(origin + '/api/auth/device/start', { method: 'POST', headers: { Origin: origin } }), { ...env, MICROSOFT_CLIENT_ID: '' });
+  expect(result?.status).toBe(200);
+  const init = exchange.mock.calls[0][1] as RequestInit;
+  expect((init.body as URLSearchParams).get('client_id')).toBe('1f907974-e22b-4810-a9de-d9647380c97e');
+  expect((init.body as URLSearchParams).get('scope')).toBe('xboxlive.signin openid profile offline_access');
+});

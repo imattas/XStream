@@ -18,7 +18,7 @@ Copy-Item .env.example apps/worker/.dev.vars
 pnpm dev
 ```
 
-On macOS/Linux use `cp .env.example apps/worker/.dev.vars`. Open [XStream locally](http://127.0.0.1:5173). The development command applies the D1 migrations, starts Vite on port 5173 and starts Wrangler on port 8787. The public browser origin is the first address. You can open the sign-in screen with empty credentials. For Microsoft pairing, configure the app’s public client ID with public client flows enabled and set the Worker encryption key. Players request a code in XStream and approve it at the Microsoft link shown. Use the HTTPS custom domain for production.
+On macOS/Linux use `cp .env.example apps/worker/.dev.vars`. Open [XStream locally](http://127.0.0.1:5173). The development command applies the D1 migrations, starts Vite on port 5173 and starts Wrangler on port 8787. The public browser origin is the first address. You can open the sign-in screen with empty credentials. For Microsoft pairing, set the Worker encryption key. XStream defaults to the public Xbox client ID used by the upstream player; set `MICROSOFT_CLIENT_ID` to override it. Players request a code in XStream and approve it at the Microsoft link shown. Use the HTTPS custom domain for production.
 
 Generate a fresh encryption key in a private terminal and place it only in the Worker's secrets:
 
@@ -45,7 +45,7 @@ pnpm build
 pnpm deploy:worker
 ```
 
-Production sign-in uses the Worker secrets `MICROSOFT_CLIENT_ID` and `TOKEN_ENCRYPTION_KEY`. Keep the encryption key stable across releases so existing sessions can still be read. [Authentication requirements](docs/AUTH.md)
+Production sign-in uses the Worker secret `TOKEN_ENCRYPTION_KEY`. The optional `MICROSOFT_CLIENT_ID` binding overrides the upstream public client ID; an existing binding takes precedence. Keep the encryption key stable across releases so existing sessions can still be read. [Authentication requirements](docs/AUTH.md)
 
 ## Update the existing PIN-protected Worker
 
@@ -97,7 +97,7 @@ Vite built the frontend, Wrangler bundled the API Worker (31.14 KiB, 8.78 KiB gz
 
 Device-code sign-in now opens Microsoft’s verification link. Live Xbox streaming grants require separate verification. Console discovery uses the first results page supported by the upstream adapter. The console negotiates encoded resolution. Display fit and a video bitrate cap are configurable. The settings are local to the browser.
 
-Outstanding external acceptance includes issuing grants with the operator's Microsoft registration, deploying to the chosen Cloudflare domain, and playing on a physical Series X/S with a controller on the intended networks. Follow the deployment commands above and the hardware acceptance steps in the testing guide.
+Outstanding external acceptance includes issuing live Microsoft and Xbox grants, deploying to the chosen Cloudflare domain, and playing on a physical Series X/S with a controller on the intended networks. Follow the deployment commands above and the hardware acceptance steps in the testing guide.
 
 
 ## Optional TLS relay for restrictive networks
