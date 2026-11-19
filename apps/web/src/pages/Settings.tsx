@@ -56,6 +56,7 @@ export default function Settings({ tab, name, profile, controllers, preferences,
           <label className="field">Maximum video bitrate<select value={preferences.bitrateKbps} onChange={e => update({ bitrateKbps: Number(e.target.value) })}>
             {[0, 5000, 10000, 20000, 30000, 50000].map(rate => <option key={rate} value={rate}>{rate === 0 ? 'Automatic' : rate / 1000 + ' Mbps'}</option>)}
           </select></label>
+          <label className="field"><span>Use TLS relay<small>For restrictive networks. Requires a configured relay; may add latency and incur usage charges.</small></span><input type="checkbox" checked={preferences.relay} onChange={e => update({ relay: e.target.checked })} /></label>
           <label className="field">Show statistics when a stream starts<input type="checkbox" checked={preferences.startStats} onChange={e => update({ startStats: e.target.checked })} /></label>
           <label className="field"><span>Reconnect after an interruption</span><input type="checkbox" checked={preferences.autoReconnect} onChange={e => update({ autoReconnect: e.target.checked })} /></label>
         </section>

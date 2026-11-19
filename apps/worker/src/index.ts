@@ -1,5 +1,6 @@
 import { AuthError, getXhomeCredentials, handleAuth, requireSession, type AuthEnv } from './auth'
 import { xboxRoute } from './xbox/routes'
+import { turnCredentials } from './turn'
 
 const securityHeaders = {
   'Cache-Control': 'private, no-store',
@@ -31,6 +32,12 @@ async function route(request: Request, env: AuthEnv): Promise<Response> {
   if (pathname.startsWith('/api/auth/')) {
     const response = await handleAuth(request, env)
     if (response) return response
+  }
+  if (pathname === '/api/turn' && request.method === 'POST') {
+    const session = await requireSession(request, env)
+    const limit = await env.PAIRING_STARTS.limit({ key: 'turn:' + session.userId })
+    if (!limit.success) return Response.json({ error: 'Too many relay requests. Try again shortly.' }, { status: 429 })
+    return Response.json(await turnCredentials(env, session.userId))
   }
   if (/^\/api\/(?:consoles|stream|cloud)(?:\/|$)/.test(pathname)) {
     const session = await requireSession(request, env)

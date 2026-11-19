@@ -78,3 +78,17 @@ Device-code sign-in now opens Microsoft’s verification link. Live Xbox streami
 
 Outstanding external acceptance includes issuing grants with the operator's Microsoft registration, deploying to the chosen Cloudflare domain, and playing on a physical Series X/S with a controller on the intended networks. Follow the deployment commands above and the hardware acceptance steps in the testing guide.
 
+
+## Optional TLS relay for restrictive networks
+
+XStream can use Cloudflare Realtime TURN over TLS on TCP port 443 for both streaming modes. This still uses WebRTC and will not work if the browser or network blocks TURN TLS or WebRTC itself. Relay connections may add latency. Standalone TURN is billed by Cloudflare; review current pricing before enabling it. The Xbox peer must also be reachable from Cloudflare. This path has not been verified with a live Xbox or on a restricted network.
+
+Create a Cloudflare Realtime TURN key in the Cloudflare dashboard. Keep its API token secret. After signing in to the deployed XStream, identify your account's `user_id` in the remote D1 `auth_sessions` table. For example, `pnpm exec wrangler d1 execute DB --remote --config wrangler.production.jsonc --command "SELECT DISTINCT user_id FROM auth_sessions WHERE expires_at > unixepoch() * 1000"`. If multiple accounts have signed in, distinguish your account before proceeding; do not copy another user's ID. Set these Worker secrets using `pnpm exec wrangler secret put NAME --config wrangler.production.jsonc` for each name:
+
+- `TURN_KEY_ID`: the TURN key ID.
+- `TURN_KEY_API_TOKEN`: that TURN key's API token, not a browser credential.
+- `TURN_ALLOWED_USER_ID`: your account's exact `user_id` from D1. Only this account can obtain relay credentials.
+
+For local testing use the same variable names in `apps/worker/.dev.vars` and use the matching local D1 account ID. Restart the development server after editing secrets. In XStream, open **Settings → Streaming → Use TLS relay**, then start a new stream. Turn it off to return to the normal connection. TURN credentials last 12 hours; a session that exceeds that period must reconnect. Never place the TURN key API token in the frontend or commit it to Git.
+
+Connection failures display a stage code: `XS-BROWSER` (browser feature check), `XS-RELAY` (relay credentials/configuration), `XS-SESSION` (Xbox session creation), `XS-PROVISION` (Xbox readiness), `XS-SIGNAL` (SDP exchange), `XS-ICE` (ICE candidate exchange), `XS-TIMEOUT` (connection setup timed out), `XS-CONNECTION` (peer connection ended), or `XS-KEEPALIVE` (session heartbeat). The code identifies the failing stage, not necessarily the underlying cause. Include the code and displayed message when troubleshooting, but do not share credentials.

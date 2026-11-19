@@ -4,6 +4,9 @@ export interface AuthEnv {
   APP_ORIGIN: string;
   MICROSOFT_CLIENT_ID: string;
   TOKEN_ENCRYPTION_KEY: string;
+  TURN_KEY_ID?: string;
+  TURN_KEY_API_TOKEN?: string;
+  TURN_ALLOWED_USER_ID?: string;
 }
 
 export class AuthError extends Error {

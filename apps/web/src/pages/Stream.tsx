@@ -85,12 +85,12 @@ export default function Stream({ serverId, mode, name, preferences, controllers 
             setInputs({ modes, player })
             setChosenInput(undefined)
           },
-          bitrateKbps: preferences.bitrateKbps, deadzone: preferences.deadzone, swapAB: preferences.swapAB,
+          relay: preferences.relay, bitrateKbps: preferences.bitrateKbps, deadzone: preferences.deadzone, swapAB: preferences.swapAB,
         })
         client.current = instance
         await instance.connect(serverId, mode)
       } catch (reason) {
-        changed('failed', message(reason))
+        if (instance?.getState() !== 'failed') changed('failed', message(reason))
       }
     }
     function close() {
