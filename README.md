@@ -41,6 +41,8 @@ pnpm build
 pnpm deploy:worker
 ```
 
+The production Worker checks a site PIN before serving pages, assets, or API requests. Set the PIN using `pnpm exec wrangler secret put SITE_PIN --config wrangler.production.jsonc`. Each browser unlock lasts seven days. Changing the PIN invalidates existing unlocks. Local development uses a separate entry point.
+
 Production sign-in uses the Worker secrets `MICROSOFT_CLIENT_ID` and `TOKEN_ENCRYPTION_KEY`. Keep the encryption key stable across releases so existing sessions can still be read. [Authentication requirements](docs/AUTH.md)
 
 ## Repository
