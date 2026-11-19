@@ -15,7 +15,7 @@ Greenlight is MIT licensed. The streaming package declares MIT in its manifest. 
 
 ## Device authorization
 
-The player-facing flow follows Microsoft's consumers v2 device authorization and token endpoints. The xal-node MSAL adapter at `4e7f905468b0af67248e2b467f6c76ecf20e1e73` demonstrates Xbox sign-in and the public-client console transfer request. XStream uses its deployment's client ID and Microsoft's returned verification URI. [Microsoft device flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-device-code) · [Upstream MSAL adapter](https://github.com/pccr10001/xal-node/blob/4e7f905468b0af67248e2b467f6c76ecf20e1e73/src/msal.ts)
+The player-facing flow follows Microsoft's consumers v2 device authorization and token endpoints. The xal-node MSAL adapter at `4e7f905468b0af67248e2b467f6c76ecf20e1e73` demonstrates Xbox sign-in and the public-client console transfer request. XStream defaults to the public Xbox client ID used by upstream `xal-node` revision `34d0d6a3e08ee2441e1f5b9c6d1793c66ad22ebc`, permits an operator override, and uses Microsoft's returned verification URI. Microsoft controls that app registration; live grants remain unverified. [Microsoft device flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-device-code) · [Upstream MSAL adapter](https://github.com/pccr10001/xal-node/blob/4e7f905468b0af67248e2b467f6c76ecf20e1e73/src/msal.ts)
 
 ## Cloud protocol evidence
 

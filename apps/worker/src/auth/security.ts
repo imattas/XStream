@@ -2,7 +2,7 @@ export interface AuthEnv {
   DB: D1Database;
   PAIRING_STARTS: RateLimit;
   APP_ORIGIN: string;
-  MICROSOFT_CLIENT_ID: string;
+  MICROSOFT_CLIENT_ID?: string;
   TOKEN_ENCRYPTION_KEY: string;
   TURN_KEY_ID?: string;
   TURN_KEY_API_TOKEN?: string;
