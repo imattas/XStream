@@ -1,5 +1,9 @@
 # XStream
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/imattas/XStream)
+
+The button starts Cloudflare’s new-project flow, which copies this repository; it does not update the existing zemi.gg Worker or preserve its production-only PIN gate. The repository currently includes a legacy Pages configuration, so this new-project flow has not been verified. For the existing Worker, use the deployment steps below.
+
 Xbox Remote Play and Xbox Cloud Gaming in a browser, using a Greenlight-derived frontend and the xbox-xcloud-player engine. A Cloudflare Worker serves the interface at https://zemi.gg, signs users in, discovers consoles and cloud titles, and handles signaling for both services. The browser plays the WebRTC stream and sends controller input.
 
 **Verification status.** The app has been exercised locally with workerd, D1, mocked Microsoft/Xbox services and a Chromium WebRTC loopback peer. Live Microsoft grant issuance and console playback require external verification. A new Entra app registration by itself does not establish xHome or console-transfer entitlement. See [authentication requirements](docs/AUTH.md) before provisioning.
@@ -42,6 +46,23 @@ pnpm deploy:worker
 ```
 
 Production sign-in uses the Worker secrets `MICROSOFT_CLIENT_ID` and `TOKEN_ENCRYPTION_KEY`. Keep the encryption key stable across releases so existing sessions can still be read. [Authentication requirements](docs/AUTH.md)
+
+## Update the existing PIN-protected Worker
+
+The PIN wrapper is intentionally not present in the current GitHub source. To preserve the PIN when updating the existing `xstream` Worker, create a separate local worktree, restore the wrapper and production configuration from the existing Git history, and deploy from there. Run these commands in PowerShell from a clean XStream checkout on `main`:
+
+```powershell
+git pull --ff-only
+git worktree add --detach ../XStream-cloudflare HEAD
+Set-Location ../XStream-cloudflare
+git restore --source 07551a6 -- apps/worker/src/production.ts wrangler.production.jsonc
+pnpm install --frozen-lockfile
+pnpm build
+pnpm exec wrangler login
+pnpm exec wrangler deploy --config wrangler.production.jsonc
+```
+
+Authenticate as the Cloudflare account that owns `zemi.gg`. These commands use the existing Worker and D1 binding; they do not commit the PIN wrapper or change GitHub. Preserve the existing Worker secrets, including `SITE_PIN`, `MICROSOFT_CLIENT_ID`, `TOKEN_ENCRYPTION_KEY`, and the three `TURN_` secrets. Review Wrangler's target and output before proceeding. The PIN wrapper applies to pages and API requests. After deployment, verify the PIN screen, sign-in, and playback. Cloudflare's Deploy to Cloudflare button creates a separate project and is not a substitute for this update procedure.
 
 ## Repository
 

@@ -1,6 +1,7 @@
 import { AuthError, getXhomeCredentials, handleAuth, requireSession, type AuthEnv } from './auth'
 import { xboxRoute } from './xbox/routes'
 import { turnCredentials } from './turn'
+import { HomeError, HomeService, validId } from './xbox/home'
 
 const securityHeaders = {
   'Cache-Control': 'private, no-store',
@@ -43,7 +44,25 @@ async function route(request: Request, env: AuthEnv): Promise<Response> {
     const session = await requireSession(request, env)
     const mode = pathname.startsWith('/api/cloud/') ? 'xcloud' : 'xhome'
     const credentials = await getXhomeCredentials(session, env, mode)
-    return xboxRoute(request, env, credentials, mode)
+    const create = request.method === 'POST' && (pathname === '/api/stream/session' || pathname === '/api/cloud/session')
+    const retry = create ? request.clone() : undefined
+    const response = await xboxRoute(request, env, credentials, mode)
+    const conflict = response.status === 409 && create && (await response.clone().json() as {error?: string}).error === 'Disconnect your active stream before starting another.'
+    if (!conflict || !retry) return response
+    const rows = await env.DB.prepare('SELECT id, region, upstream_id, mode FROM stream_sessions WHERE owner = ? AND expires_at > ?')
+      .bind(session.id, Date.now()).all<{id: string; region: string; upstream_id: string; mode: string}>()
+    for (const row of rows.results) {
+      if (!validId(row.upstream_id) || (row.mode !== 'xhome' && row.mode !== 'xcloud')) {
+        return Response.json({ error: 'Another stream is still starting. Wait a moment and retry.' }, { status: 409 })
+      }
+      const prior = await getXhomeCredentials(session, env, row.mode)
+      const home = new HomeService(prior, new URL(request.url).hostname, row.mode)
+      try { await home.call('/v5/sessions/' + (row.mode === 'xcloud' ? 'cloud/' : 'home/') + row.upstream_id, 'DELETE', undefined, row.region) }
+      catch (error) { if (!(error instanceof HomeError && error.status === 404)) return Response.json({ error: 'Could not disconnect the previous Xbox stream. Try again.' }, { status: 502 }) }
+      await env.DB.prepare('DELETE FROM stream_sessions WHERE id = ? AND owner = ? AND upstream_id = ?')
+        .bind(row.id, session.id, row.upstream_id).run()
+    }
+    return xboxRoute(retry, env, credentials, mode)
   }
   return Response.json({ error: 'Unknown API route.' }, { status: 404 })
 }

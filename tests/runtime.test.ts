@@ -7,6 +7,7 @@ const origin = 'https://xbox.example.test'
 const regionalHost = 'uks.core.gssv-play-prodxhome.xboxlive.com'
 let runtime: Miniflare
 let cloudEnabled = false
+let cloudDeleteFails = false
 let xboxTicketCount = 0
 const cloudHost = 'uks.core.gssv-play-prod.xboxlive.com'
 
@@ -73,7 +74,7 @@ beforeAll(async () => {
               const body = await request.json() as {titleId: string; serverId: string}
               if (body.titleId === 'Game.Name (Edition)' && body.serverId === '') return MockResponse.json({ sessionPath: 'v5/sessions/cloud/cloud-id' })
             }
-            if (url.pathname === '/v5/sessions/cloud/cloud-id' && request.method === 'DELETE') return new MockResponse(null, { status: 204 })
+            if (url.pathname === '/v5/sessions/cloud/cloud-id' && request.method === 'DELETE') return new MockResponse(null, { status: cloudDeleteFails ? 503 : 204 })
           }
           if (url.hostname === 'xhome.gssv-play-prod.xboxlive.com') {
             return MockResponse.json({ gsToken: 'fixture-stream', durationInSeconds: 3600,
@@ -189,9 +190,18 @@ describe('Pages to API service binding in workerd', () => {
     expect(await cloudStream.clone().json()).toMatchObject({ inputs: ['controller','overlay','touch','kbm'] })
     const cloudId = (await cloudStream.json() as {sessionId: string}).sessionId
     expect((await runtime.dispatchFetch(origin + '/api/stream/session/' + cloudId, { method: 'DELETE', headers })).status).toBe(404)
-    expect((await runtime.dispatchFetch(origin + '/api/stream/session', { method: 'POST', headers,
-      body: JSON.stringify({ serverId: 'console-a' }) })).status).toBe(409)
-    expect((await runtime.dispatchFetch(origin + '/api/cloud/session/' + cloudId, { method: 'DELETE', headers })).status).toBe(200)
+    cloudDeleteFails = true
+    const blocked = await runtime.dispatchFetch(origin + '/api/stream/session', { method: 'POST', headers,
+      body: JSON.stringify({ serverId: 'console-a' }) })
+    expect(blocked.status).toBe(502)
+    expect(await db.prepare('SELECT COUNT(*) AS count FROM stream_sessions WHERE id = ?').bind(cloudId).first()).toMatchObject({ count: 1 })
+    cloudDeleteFails = false
+    const replacement = await runtime.dispatchFetch(origin + '/api/stream/session', { method: 'POST', headers,
+      body: JSON.stringify({ serverId: 'console-a' }) })
+    expect(replacement.status).toBe(201)
+    expect((await runtime.dispatchFetch(origin + '/api/cloud/session/' + cloudId, { method: 'DELETE', headers })).status).toBe(404)
+    const newId = (await replacement.json() as {sessionId: string}).sessionId
+    expect((await runtime.dispatchFetch(origin + '/api/stream/session/' + newId, { method: 'DELETE', headers })).status).toBe(200)
     const logout = await runtime.dispatchFetch(origin + '/api/auth/logout', { method: 'POST', headers: { Cookie: cookie, Origin: origin } })
     expect(logout.status).toBe(204)
     expect((await runtime.dispatchFetch(origin + '/api/consoles', { headers: { Cookie: cookie } })).status).toBe(401)

@@ -202,3 +202,11 @@ it('maps actual upstream input frames across unplug/replug, including swap, trig
   expect(pad.getPhysicalGamepadId()).toBe(-1);
   player.destroy();
 });
+
+it('explains the peer failure without exposing ICE addresses', async () => {
+  const { peerFailureDetail } = await import('./client');
+  expect(peerFailureDetail('failed', false)).toContain('ICE: failed');
+  expect(peerFailureDetail('failed', false)).toContain('TLS relay is off');
+  expect(peerFailureDetail('failed', true)).toContain('TLS relay is on');
+  expect(peerFailureDetail('failed', true)).toContain('TCP 443');
+});
