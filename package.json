@@ -17,7 +17,8 @@
     "build": "pnpm --filter @xstream/web build && wrangler deploy --dry-run --config apps/worker/wrangler.jsonc --outdir dist && wrangler pages functions build functions --outfile=.wrangler/pages/index.js",
     "deploy:worker": "wrangler deploy --config wrangler.production.jsonc",
     "deploy:pages": "wrangler pages deploy apps/web/dist --project-name xstream --branch main",
-    "db:remote": "wrangler d1 migrations apply DB --remote --config wrangler.production.jsonc"
+    "db:remote": "wrangler d1 migrations apply DB --remote --config wrangler.production.jsonc",
+    "deploy": "wrangler d1 migrations apply DB --remote && wrangler deploy"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "4.20260702.1",
@@ -32,6 +33,18 @@
     "typescript-eslint": "8.73.0",
     "vitest": "4.1.12",
     "wrangler": "4.100.0"
+  },
+  "cloudflare": {
+    "bindings": {
+      "APP_ORIGIN": {
+        "description": "Exact HTTPS origin of this Worker (for example, https://your-worker.your-subdomain.workers.dev). Update the copied wrangler.jsonc and redeploy if the URL is not known yet."
+      },
+      "TOKEN_ENCRYPTION_KEY": {
+        "description": "A unique base64-encoded 32-byte random key. Generate with node -e \"console.log(require('node:crypto').randomBytes(32).toString('base64'))\". Keep this value stable."
+      },
+      "DB": {
+        "description": "D1 database used to store encrypted sign-in sessions."
+      }
+    }
   }
 }
-
